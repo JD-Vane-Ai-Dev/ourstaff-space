@@ -1,0 +1,20 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  @media (prefers-reduced-motion: no-preference) {
+    html {
+      scroll-behavior: smooth;
+    }
+  }
+
+  body {
+    @apply bg-obsidian font-body text-body antialiased;
+  }
+
+  ::selection {
+    background: rgba(0, 229, 201, 0.25);
+    color: #ffffff;
+  }
+}
