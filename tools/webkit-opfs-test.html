@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0e1728">
+<title>WebKit Storage Diagnostic — Ghost Shell</title>
+<style>
+:root{color-scheme:dark;font-family:system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;background:#0b1220;color:#eaf0fa}*{box-sizing:border-box}body{margin:0;min-height:100dvh;background:radial-gradient(ellipse at top,#1a3452 0,#0b1220 58%);padding:env(safe-area-inset-top) 16px calc(28px + env(safe-area-inset-bottom))}main{max-width:700px;margin:auto;padding-top:30px}h1{font-size:clamp(25px,6vw,36px);margin:8px 0 10px;line-height:1.13}h2{font-size:18px;margin:0 0 14px}p{line-height:1.45;color:#a9b9d0;margin:10px 0 15px}.eyebrow{font-size:12px;letter-spacing:.13em;color:#86d5c7;font-weight:800;text-transform:uppercase}.card{background:rgba(20,33,52,.94);border:1px solid #32445e;border-radius:15px;padding:18px;margin:16px 0;box-shadow:0 9px 30px rgba(0,0,0,.1)}.stats{display:grid;grid-template-columns:1fr 1fr;gap:11px}.stat{padding:12px;border:1px solid #344760;border-radius:12px;background:#111d2d;min-width:0}.stat .k{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:#a3b7d0}.stat .v{font-size:17px;overflow-wrap:anywhere;font-weight:700;margin-top:7px}.actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}button{border:1px solid #3a6683;background:#214b67;color:#f2faff;padding:13px 11px;border-radius:11px;font:inherit;font-weight:700;min-height:49px;cursor:pointer}button.primary{background:#52d4b7;color:#062b24;border-color:#52d4b7}button:disabled{opacity:.5;cursor:wait}button.danger{border-color:#995267;background:#402433}button.wide{grid-column:span 2}button:focus-visible{outline:3px solid #c4ffe5;outline-offset:2px}.hint{font-size:12px;color:#9fb0c6}.status{font-weight:700;letter-spacing:.01em;color:#d3e1f7}.status.good{color:#82dfbe}.status.bad{color:#ffb9a9}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#091323;border:1px solid #3a4d66;border-radius:10px;padding:12px;color:#cfdded;font-size:12px;line-height:1.5;max-height:340px;overflow-y:auto}.result{border-left:3px solid #74aace;padding-left:12px;font-size:13px;white-space:pre-wrap;overflow-wrap:anywhere}.note{border:1px solid #4d6075;border-radius:10px;padding:12px;font-size:12px;color:#aebed0}.footer{color:#849ab0;font-size:12px;margin:25px 0}@media(max-width:370px){.actions{grid-template-columns:1fr}button.wide{grid-column:auto}.stats{grid-template-columns:1fr}} </style>
+</head>
+<body><main>
+<div class="eyebrow">Ghost Shell / WebKit Diagnostics</div>
+<h1>How much storage can your iPhone browser use?</h1>
+<p>This test runs <strong>on this device, in this browser</strong>. It estimates the browser-origin quota, checks IndexedDB and WebKit's Origin Private File System (OPFS), and saves a small 1 MiB test file that you can verify after reloading.</p>
+<div class="card"><h2>Browser storage summary</h2><div class="stats">
+<div class="stat"><div class="k">Secure context</div><div class="v" id="secure">Checking…</div></div>
+<div class="stat"><div class="k">OPFS</div><div class="v" id="opfs">Checking…</div></div>
+<div class="stat"><div class="k">Estimated quota</div><div class="v" id="quota">Checking…</div></div>
+<div class="stat"><div class="k">Used by this origin</div><div class="v" id="usage">Checking…</div></div>
+<div class="stat"><div class="k">Persistence mode</div><div class="v" id="persistence">Checking…</div></div>
+<div class="stat"><div class="k">Origin</div><div class="v" style="font-size:12px" id="origin">Checking…</div></div>
+</div><p class="hint">These quotas are browser estimates, not a guarantee of available physical space. Files stored by this page do not become cloud files or a MongoDB server.</p></div>
+<div class="card"><h2>Run safe read/write checks</h2><div class="actions">
+<button class="primary" id="run">1. Write + verify 1 MiB</button>
+<button id="reload">2. Reload then verify</button>
+<button id="verify">Verify saved proof</button>
+<button id="persistent">Request persistent mode</button>
+<button id="export">Export report JSON</button>
+<button id="clean" class="danger">Delete test files</button>
+</div><p class="status" id="status" role="status" aria-live="polite">Ready.</p><div id="report" class="result" aria-live="polite"></div></div>
+<div class="card"><h2>Diagnostic log</h2><pre id="log" aria-live="polite">Initializing…</pre></div>
+<div class="note"><strong>Privacy:</strong> No external requests, login, API keys, MongoDB credentials or uploads. The 1 MiB file stays in this page's private storage until you remove it. A browser reset or storage eviction can delete it. For a true Safari measurement, open this URL directly in Safari rather than an in-app browser.</div>
+<div class="footer">Storage diagnostic v1.0 • Isolated from your Ghost Shell production files</div>
+</main><script>
+'use strict';
+const PROBE_FILE='ghostshell-webkit-storage-probe-v1.bin';
+const DB_NAME='ghostshell-webkit-diagnostic-v1';
+const DB_STORE='receipts';
+const REPORT_KEY='opfs-1m-proof';
+const MIB=1024*1024;
+const logBox=document.getElementById('log');
+const $=id=>document.getElementById(id);
+const state={version:'1.0',timestamp:new Date().toISOString(),origin:location.origin,userAgent:navigator.userAgent,secureContext:isSecureContext,checks:[],quota:null,usage:null,persisted:null,opfs:false,indexedDB:!!window.indexedDB,proof:null};
+function size(bytes){if(!Number.isFinite(bytes))return 'unavailable';if(bytes<1024)return bytes+' B';if(bytes<1024*1024)return (bytes/1024).toFixed(1)+' KiB';if(bytes<1024*1024*1024)return (bytes/MIB).toFixed(1)+' MiB';return (bytes/(1024*MIB)).toFixed(2)+' GiB';}
+function log(msg){const now=new Date().toLocaleTimeString();logBox.textContent=(logBox.textContent==='Initializing…'?'':logBox.textContent+'\n')+'['+now+'] '+msg;logBox.scrollTop=logBox.scrollHeight;}
+function status(msg,kind=''){const v=$('status');v.textContent=msg;v.className='status '+kind;}
+function check(name,ok,detail){state.checks.push({name,ok,detail});log((ok?'PASS ':'FAIL ')+name+(detail?' — '+detail:''));}
+function render(){const repr={version:state.version,origin:state.origin,secureContext:state.secureContext,opfs:state.opfs,indexedDB:state.indexedDB,quotaEstimate:size(state.quota),usageEstimate:size(state.usage),persisted:state.persisted,proof:state.proof,checks:state.checks};$('report').textContent=JSON.stringify(repr,null,2);}
+function dbOpen(){return new Promise((resolve,reject)=>{const req=indexedDB.open(DB_NAME,1);req.onupgradeneeded=()=>{const db=req.result;if(!db.objectStoreNames.contains(DB_STORE))db.createObjectStore(DB_STORE);};req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error||new Error('IndexedDB open failed'));});}
+async function dbSet(key,data){const db=await dbOpen();try{await new Promise((resolve,reject)=>{const tx=db.transaction(DB_STORE,'readwrite');tx.objectStore(DB_STORE).put(data,key);tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error||new Error('IndexedDB write failed'));});}finally{db.close();}}
+async function dbGet(key){const db=await dbOpen();try{return await new Promise((resolve,reject)=>{const tx=db.transaction(DB_STORE,'readonly');const r=tx.objectStore(DB_STORE).get(key);r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error||new Error('IndexedDB read failed'));});}finally{db.close();}}
+async function dbDelete(key){const db=await dbOpen();try{await new Promise((resolve,reject)=>{const tx=db.transaction(DB_STORE,'readwrite');tx.objectStore(DB_STORE).delete(key);tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error||new Error('IndexedDB delete failed'));});}finally{db.close();}}
+async function sha(bytes){const result=await crypto.subtle.digest('SHA-256',bytes);return Array.from(new Uint8Array(result),b=>b.toString(16).padStart(2,'0')).join('');}
+async function refresh(){state.origin=location.origin;state.secureContext=isSecureContext;state.opfs=!!(navigator.storage?.getDirectory);$('secure').textContent=isSecureContext?'Yes':'No';$('opfs').textContent=state.opfs?'Available':'Unavailable';$('origin').textContent=location.origin||'opaque';
+try{const e=await navigator.storage.estimate();state.quota=e.quota??null;state.usage=e.usage??null;$('quota').textContent=size(state.quota);$('usage').textContent=size(state.usage);}catch(e){log('Storage estimate not available: '+e.name);$('quota').textContent='Unavailable';$('usage').textContent='Unavailable';}
+try{state.persisted=await navigator.storage.persisted();$('persistence').textContent=state.persisted?'Persistent':'Best effort';}catch(e){$('persistence').textContent='Unknown';}render();}
+async function withBusy(fn){for(const b of document.querySelectorAll('button'))b.disabled=true;try{await fn();}catch(e){status('Test failed: '+e.message,'bad');check('Operation',false,e.name+': '+e.message);}finally{await refresh();for(const b of document.querySelectorAll('button'))b.disabled=false;}}
+async function writeTest(){status('Creating and verifying local test file…');if(!isSecureContext)throw new Error('A secure HTTPS origin is required');if(!navigator.storage?.getDirectory)throw new Error('OPFS is unavailable here');if(!indexedDB)throw new Error('IndexedDB unavailable');
+const bytes=new Uint8Array(MIB);for(let i=0;i<MIB;i+=65536)crypto.getRandomValues(bytes.subarray(i,i+65536));const hash=await sha(bytes);
+const dir=await navigator.storage.getDirectory();const f=await dir.getFileHandle(PROBE_FILE,{create:true});const writable=await f.createWritable();try{await writable.write(bytes);await writable.close();}catch(e){try{await writable.abort();}catch{}throw e;}
+const read=await(await f.getFile()).arrayBuffer();if(read.byteLength!==MIB||await sha(read)!==hash)throw new Error('Read-back checksum mismatch');check('OPFS write + read + SHA-256',true,size(read.byteLength));
+const receipt={file:PROBE_FILE,bytes:MIB,sha256:hash,writtenAt:new Date().toISOString(),origin:location.origin};await dbSet(REPORT_KEY,receipt);const stored=await dbGet(REPORT_KEY);if(stored?.sha256!==hash)throw new Error('IndexedDB proof mismatch');check('IndexedDB write + read',true);state.proof={...receipt,awaitingReload:true};status('Passed. Tap “Reload then verify” to test persistence.','good');}
+async function verifyTest(){status('Checking saved file after reload…');if(!navigator.storage?.getDirectory||!indexedDB)throw new Error('Storage APIs unavailable');const receipt=await dbGet(REPORT_KEY);if(!receipt)throw new Error('No prior proof. Run the write test first');if(receipt.origin!==location.origin)throw new Error('Origin changed; storage cannot be shared across origins');const dir=await navigator.storage.getDirectory();const f=await dir.getFileHandle(PROBE_FILE);const data=await(await f.getFile()).arrayBuffer();if(data.byteLength!==receipt.bytes||await sha(data)!==receipt.sha256)throw new Error('Stored file failed checksum');const proof={...receipt,verifiedAt:new Date().toISOString(),survivedReload:true};state.proof=proof;check('OPFS proof survived page reload',true,size(data.byteLength));status('Passed: data survived the page reload.','good');}
+async function requestPersistent(){if(!navigator.storage?.persist)throw new Error('Persistence API unavailable');const result=await navigator.storage.persist();check('Persistent-mode request',result,result?'Browser granted persistence':'Browser denied or ignored request');status(result?'Persistence granted.':'Persistence not granted; this is normal on some browsers.',result?'good':'');}
+async function cleanup(){if(navigator.storage?.getDirectory){const dir=await navigator.storage.getDirectory();try{await dir.removeEntry(PROBE_FILE);}catch(e){if(e.name!=='NotFoundError')throw e;}}if(indexedDB)await dbDelete(REPORT_KEY);state.proof=null;check('Diagnostic proof removed',true);status('Only this tool’s saved test data has been deleted.','good');}
+function exportReport(){const report={...state,exportedAt:new Date().toISOString(),caveat:'Browser-origin estimate; not cloud-storage capacity'};const a=document.createElement('a');const url=URL.createObjectURL(new Blob([JSON.stringify(report,null,2)],{type:'application/json'}));a.href=url;a.download='ghost-shell-webkit-storage-report.json';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);log('Exported JSON report locally');}
+$('run').onclick=()=>withBusy(writeTest);$('verify').onclick=()=>withBusy(verifyTest);$('reload').onclick=()=>location.reload();$('persistent').onclick=()=>withBusy(requestPersistent);$('clean').onclick=()=>withBusy(cleanup);$('export').onclick=()=>exportReport();
+refresh().then(async()=>{try{const stored=indexedDB?await dbGet(REPORT_KEY):null;if(stored){state.proof={file:stored.file,bytes:stored.bytes,writtenAt:stored.writtenAt,awaitingReload:true};status('Previous proof found. Tap Verify saved proof.');}else status('Ready. Run the 1 MiB write test.');}catch(e){log('IndexedDB probe unavailable: '+e.name);}render();});
+</script></body></html>
